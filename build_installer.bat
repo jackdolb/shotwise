@@ -94,7 +94,12 @@ if defined SIGN_ON (
 )
 
 rem --- arquivo .sha256 ao lado do instalador (o Shotwise exige o hash para atualizar) ---
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$f='dist_installer\Shotwise-Setup-%VER%.exe'; (Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash.ToLower() + '  ' + (Split-Path $f -Leaf) | Set-Content -Encoding ascii ($f + '.sha256')"
+python tools\write_sha256.py "dist_installer\Shotwise-Setup-%VER%.exe"
+if errorlevel 1 (
+    echo ERRO: nao consegui gerar o arquivo .sha256 - o atualizador recusaria esta versao.
+    pause
+    exit /b 1
+)
 if errorlevel 1 goto :erro
 
 echo.
