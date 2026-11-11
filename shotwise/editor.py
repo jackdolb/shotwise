@@ -59,6 +59,8 @@ class OptionsPanel(QFrame):
         self._grip.setToolTip(tr("Arraste para mover este painel"))
         self._grip.setStyleSheet("color:rgba(128,128,128,0.8);font-size:9px;letter-spacing:2px;padding:2px 0 4px 0;")
         self._lay.addWidget(self._grip)
+        self._drag_off = None
+        self._user_pos: QPoint | None = None                 # onde o usuário deixou o painel (None = canto superior direito)
         self.setCursor(Qt.CursorShape.ArrowCursor)           # sobre o painel o mouse é uma seta normal
         self.setStyleSheet(
             "#optionsPanel QLabel{background:transparent;}"
@@ -69,8 +71,6 @@ class OptionsPanel(QFrame):
             "#optionsPanel QSlider::handle:horizontal{width:14px;height:14px;margin:-6px 0;border-radius:7px;"
             "background:palette(highlight);border:2px solid palette(window);}"
             "#optionsPanel QSlider::handle:horizontal:hover{width:16px;height:16px;margin:-7px 0;border-radius:8px;}")
-        self._drag_off = None
-        self._user_pos: QPoint | None = None
         self.hide()
 
     def _add(self, w: QWidget) -> _Handle:
@@ -107,14 +107,20 @@ class OptionsPanel(QFrame):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         base = self.palette().window().color()
-        fill = QColor(base.red(), base.green(), base.blue(), 232)
+        fill = QColor(base.red(), base.green(), base.blue(), 205)   # translúcido: dá para ver a imagem por trás
         edge = QColor(128, 128, 128, 90)
         r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         p.setPen(QPen(edge, 1))
         p.setBrush(fill)
         p.drawRoundedRect(r, 14, 14)
 
-    # --- posição e arraste ---------------------------------------------------
+    # --- posição e arraste --------------------------------------------------
+    # Por padrão o painel abre no canto superior direito; pode ser arrastado para qualquer ponto (é translúcido).
+    def _clamp(self, x: int, y: int) -> tuple[int, int]:
+        par = self.parentWidget()
+        return (min(max(x, 4), max(4, par.width() - self.width() - 4)),
+                min(max(y, 4), max(4, par.height() - self.height() - 4)))
+
     def reposition(self):
         par = self.parentWidget()
         if par is None:
@@ -126,9 +132,7 @@ class OptionsPanel(QFrame):
             x, y = par.width() - sbw - self.width() - self.MARGIN, self.MARGIN
         else:
             x, y = self._user_pos.x(), self._user_pos.y()
-        x = min(max(x, 4), max(4, par.width() - self.width() - 4))
-        y = min(max(y, 4), max(4, par.height() - self.height() - 4))
-        self.move(x, y)
+        self.move(*self._clamp(x, y))
         self.raise_()
 
     def mousePressEvent(self, ev):
@@ -138,10 +142,7 @@ class OptionsPanel(QFrame):
 
     def mouseMoveEvent(self, ev):
         if self._drag_off is not None and self.parentWidget() is not None:
-            par = self.parentWidget()
-            pt = self.mapToParent(ev.position().toPoint() - self._drag_off)
-            x = min(max(pt.x(), 4), max(4, par.width() - self.width() - 4))
-            y = min(max(pt.y(), 4), max(4, par.height() - self.height() - 4))
+            x, y = self._clamp(*(lambda pt: (pt.x(), pt.y()))(self.mapToParent(ev.position().toPoint() - self._drag_off)))
             self.move(x, y)
             self._user_pos = QPoint(x, y)
             ev.accept()
@@ -892,6 +893,7 @@ class EditorWindow(QMainWindow):
                 self._opts_tb.reposition()
             elif obj is self.view.viewport():
                 self._hint.reposition()
+                self._apply_panel_space()
         return super().eventFilter(obj, ev)
 
     def _on_tool_change_requested(self, tool: str):
@@ -984,25 +986,11 @@ class EditorWindow(QMainWindow):
         self._update_hint()
         self._sync_resize_controls()
 
-    def _apply_panel_space(self):
-        """Reserva uma faixa à direita para o painel: a imagem é 'espremida' para caber na área restante."""
-        tb = self._opts_tb
-        want = tb.width() + 2 * tb.MARGIN if tb.isVisible() else 0
-        if want == getattr(self, "_panel_space", 0):
-            return
-        self._panel_space = want
-        v = self.view
-        v.setViewportMargins(0, 0, want, 0)
-        if want:
-            ow, _oh = self.scene.output_size()
-            if ow * v.zoom_value * 1.0 > v.viewport().width() - 8:
-                self._squeezed = True
-                v.fit_initial()
-        elif getattr(self, "_squeezed", False):
-            self._squeezed = False
-            v.fit_initial()
-        v.centerOn(self.scene.frame_rect().center())
-        tb.reposition()
+    def _apply_panel_space(self, *_):
+        """O painel só flutua sobre a imagem (translúcido e móvel): nenhuma faixa é reservada na área de edição."""
+        if self.view.viewportMargins().right():
+            self.view.setViewportMargins(0, 0, 0, 0)
+        self._opts_tb.reposition()
 
     def _update_hint(self, *_):
         """Recortar e OCR não têm opções: mostram só um balão com o que fazer."""

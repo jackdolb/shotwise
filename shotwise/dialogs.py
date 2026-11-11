@@ -403,6 +403,7 @@ class LibraryDialog(QDialog):
         pid = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
         if pid:
             self.open_project.emit(pid)
+            self.accept()          # a captura já foi escolhida: a lista fecha (o editor tem o botão para reabri-la)
 
     def _delete(self):
         it = self.lst.currentItem()

@@ -30,7 +30,7 @@ A partir da versão 1.8 o programa se chama **Shotwise**. Ao abrir pela primeira
 | Recortar | recorte não destrutivo: dá para remover o recorte depois |
 | Mais de uma captura na mesma imagem | botão de inserir imagem: nova captura de área, colar (`Ctrl+V`), arquivo ou arrastar e soltar. Mova e redimensione cada imagem (Shift = proporção livre) |
 | Fundo | ferramenta **Fundo**: painel de opções à direita com degradês prontos, estilo (Linear, Radial, Desfoque, **Mesclado**), Cor 1/Cor 2 (inverter), margem, cantos da imagem e do fundo, sombra (tamanho e direção), fundo transparente e **cor sólida**. Também dá para arrastar as bordas da moldura na imagem para mudar a margem |
-| Painel de opções | painel translúcido de cantos arredondados, à direita da imagem (que é espremida para caber na área restante). Todos os ajustes seguem o mesmo desenho: título, valor à direita e barra embaixo. Aparece quando a ferramenta (ou o item selecionado) tem opções; Recortar e OCR mostram só um balão de dica. Arraste pelos três pontinhos para mover |
+| Painel de opções | painel translúcido de cantos arredondados que flutua sobre a imagem (abre no canto superior direito); arraste pelos três pontinhos para movê-lo — a transparência ajuda a enxergar o que está por trás. Todos os ajustes seguem o mesmo desenho: título, valor à direita e barra embaixo. Aparece quando a ferramenta (ou o item selecionado) tem opções; Recortar e OCR mostram só um balão de dica. |
 | Tarja sólida | cor (com conta-gotas), borda e espessura da borda; sempre opaca (não reversível) |
 | Redimensionar | barra de escala, tamanho exato, girar 90°/180° e espelhar na horizontal/vertical |
 | Desenhar várias formas | ao terminar uma forma ela fica selecionada; arrastar em outro lugar cria outra do mesmo tipo; clicar sobre um desenho do mesmo tipo o seleciona; clicar sobre outro tipo de desenho o seleciona e troca para a ferramenta dele |
@@ -78,7 +78,7 @@ O script gera o aplicativo com o PyInstaller e o instalador `dist_installer\Shot
 - **Atualizar**: aumente `__version__` em `shotwise/__init__.py`, rode `build_installer.bat` de novo e execute o novo instalador sobre o antigo. Ele pede ao Shotwise que se encerre sozinho (e, se não obedecer, fecha o `Shotwise.exe`), troca os arquivos e preserva configurações, capturas editáveis e a escolha de iniciar com o Windows. O `AppId` do `installer\Shotwise.iss` não pode mudar.
 - **Desinstalar**: pelo Windows (Aplicativos instalados). Ele pergunta se deve apagar também `%APPDATA%\Shotwise` (configurações e capturas editáveis). Os PNGs salvos nunca são apagados.
 - **Assinatura**: defina `SHOTWIN_SIGN_THUMBPRINT` com a impressão digital de um certificado de assinatura de código e o script assina o `.exe` e o instalador com o `signtool`. Sem assinatura, o Controle de Aplicativo Inteligente e o SmartScreen podem bloquear.
-- Instalação silenciosa (para scripts): `Shotwise-Setup-1.24.0.exe /VERYSILENT /SUPPRESSMSGBOXES`.
+- Instalação silenciosa (para scripts): `Shotwise-Setup-1.2.0.exe /VERYSILENT /SUPPRESSMSGBOXES`.
 - Se precisar de `.msi` (Intune/GPO), dá para gerar com o WiX a partir da mesma pasta `dist\Shotwise`.
 
 **Gerar um executável único (`dist\Shotwise.exe`)**

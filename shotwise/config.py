@@ -125,6 +125,8 @@ class Config:
                 setattr(cfg, key, new)
         # limites: um config.json adulterado não pode causar travamento ou uso excessivo de memória
         cfg.update_signer = cfg.update_signer[:400]
+        if not cfg.update_signer.strip():           # config.json de versões antigas salvou vazio: usa o certificado fixado
+            cfg.update_signer = UPDATE_SIGNER_DEFAULT
         cfg.scroll_delay_ms = min(max(cfg.scroll_delay_ms, 100), 2000)
         cfg.scroll_max_frames = min(max(cfg.scroll_max_frames, 2), 200)
         cfg.scroll_max_height = min(max(cfg.scroll_max_height, 1000), 60000)

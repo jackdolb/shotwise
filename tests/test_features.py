@@ -2673,7 +2673,7 @@ def test_panel_arrow_cursor_squeeze_and_hints(qapp):
     win.show()
     win.select_tool("rect")
     assert win._opts_tb.cursor().shape() == Qt.CursorShape.ArrowCursor
-    assert win.view.viewportMargins().right() >= win._opts_tb.width()      # a imagem é espremida
+    assert win.view.viewportMargins().right() == 0                          # nenhuma faixa reservada: o painel flutua
     win.select_tool("crop")
     assert not win._opts_tb.isVisible() and win.view.viewportMargins().right() == 0
     assert win._hint.isVisible() and "área" in win._hint._label.text()
@@ -2723,3 +2723,56 @@ def test_scale_slider_single_undo_and_bg_row(qapp):
     assert win.btn_bg_c1.parentWidget() is win.btn_bg_c2.parentWidget()      # Cor 1 e Cor 2 lado a lado
     assert not win.btn_bg_shadow.icon().isNull()
     assert win.btn_bg_swap.text() == "" and not win.btn_bg_swap.icon().isNull()
+
+
+def test_panel_floats_without_reserved_strip(qapp):
+    from shotwise.config import Config
+    from shotwise.editor import EditorWindow
+
+    win = EditorWindow(solid(1000, 300, "#fff"), Config())
+    win.resize(1150, 600)
+    win.show()
+    win.select_tool("pixelate")
+    tb = win._opts_tb
+    assert tb.isVisible() and win.view.viewportMargins().right() == 0
+    tb._user_pos = QPoint(100, 50)
+    tb.reposition()
+    assert tb.pos() == QPoint(100, 50)
+    tb._user_pos = QPoint(99999, 99999)
+    tb.reposition()
+    assert tb.x() + tb.width() <= win.view.width()
+    win.select_tool("select")
+    assert win.view.viewportMargins().right() == 0
+
+
+def test_library_closes_after_opening_capture(qapp, monkeypatch):
+    from shotwise import dialogs
+
+    class E:
+        id, title, updated, size = "abc", "Captura", "2026-11-10T22:00:00", (10, 10)
+
+    monkeypatch.setattr(dialogs.library, "entries", lambda: [E()])
+    monkeypatch.setattr(dialogs.library, "thumb", lambda _pid: QImage())
+    dlg = dialogs.LibraryDialog()
+    opened = []
+    dlg.open_project.connect(opened.append)
+    dlg.show()
+    dlg.lst.setCurrentRow(0)
+    dlg.bt_open.click()
+    assert opened == ["abc"] and not dlg.isVisible()
+
+
+def test_updater_pins_signer_even_with_old_empty_config(tmp_path, monkeypatch):
+    import json
+    from shotwise import UPDATE_SIGNER_DEFAULT, config
+    from shotwise.updater import normalize_thumbprints, signature_ok
+
+    assert len(normalize_thumbprints(UPDATE_SIGNER_DEFAULT)) == 1
+    f = tmp_path / "config.json"
+    f.write_text(json.dumps({"update_signer": ""}), encoding="utf-8")
+    monkeypatch.setattr(config.Config, "path", classmethod(lambda cls: f))
+    cfg = config.Config.load()
+    pinned = normalize_thumbprints(cfg.update_signer)
+    assert pinned == normalize_thumbprints(UPDATE_SIGNER_DEFAULT)
+    assert signature_ok("Valid", UPDATE_SIGNER_DEFAULT.lower(), pinned)
+    assert not signature_ok("Valid", "A" * 40, pinned) and not signature_ok("NotSigned", "", pinned)
