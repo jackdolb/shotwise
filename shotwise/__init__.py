@@ -1,6 +1,6 @@
 """Shotwise - captura de tela com anotações para Windows."""
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 APP_NAME = "Shotwise"
 APP_AUTHOR = "Jackson Araujo"             # exibido em Configurações > Sobre (ajuste para o nome completo/equipe)
 UPDATE_REPO_DEFAULT = "jackdolb/shotwise" # repositório web padrão das atualizações, no formato usuario/repositorio

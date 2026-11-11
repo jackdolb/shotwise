@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QPoint, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QGuiApplication, QIcon, QImage, QImageReader, QKeySequence,
                            QPainter, QPainterPath, QPen, QPixmap)
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QFileDialog, QGraphicsView,
@@ -48,22 +48,39 @@ class OptionsPanel(QFrame):
     def __init__(self, parent: QWidget):
         super().__init__(parent)
         self.setObjectName("optionsPanel")
-        self.setMinimumWidth(214)
-        self.setMaximumWidth(250)
-        self._lay = QVBoxLayout(self)
-        self._lay.setContentsMargins(12, 4, 12, 12)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(12, 4, 6, 12)
+        outer.setSpacing(0)
+        # o conteúdo fica numa área com rolagem: em janelas pequenas o painel encolhe e rola, sem sair da tela
+        self._inner = QWidget()
+        self._inner.setObjectName("optionsInner")
+        self._lay = QVBoxLayout(self._inner)
+        self._lay.setContentsMargins(0, 0, 6, 0)
         self._lay.setSpacing(4)
+        self._scroll = QScrollArea()
+        self._scroll.setObjectName("optionsScroll")
+        self._scroll.setWidget(self._inner)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.viewport().setAutoFillBackground(False)
+        self._inner.setAutoFillBackground(False)
         self._grip = QLabel("• • •")
         self._grip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._grip.setCursor(Qt.CursorShape.SizeAllCursor)
         self._grip.setToolTip(tr("Arraste para mover este painel"))
         self._grip.setStyleSheet("color:rgba(128,128,128,0.8);font-size:9px;letter-spacing:2px;padding:2px 0 4px 0;")
-        self._lay.addWidget(self._grip)
+        outer.addWidget(self._grip)
+        outer.addWidget(self._scroll, 1)
         self._drag_off = None
         self._user_pos: QPoint | None = None                 # onde o usuário deixou o painel (None = canto superior direito)
         self.setCursor(Qt.CursorShape.ArrowCursor)           # sobre o painel o mouse é uma seta normal
         self.setStyleSheet(
             "#optionsPanel QLabel{background:transparent;}"
+            "#optionsPanel QScrollArea#optionsScroll, #optionsPanel QWidget#optionsInner{background:transparent;border:none;}"
+            "#optionsPanel QScrollBar:vertical{width:6px;background:transparent;margin:2px 0;}"
+            "#optionsPanel QScrollBar::handle:vertical{background:rgba(128,128,128,110);border-radius:3px;min-height:24px;}"
+            "#optionsPanel QScrollBar::add-line:vertical, #optionsPanel QScrollBar::sub-line:vertical{height:0;}"
             "#optionsPanel QLabel#sliderValue{color:palette(highlight);font-weight:600;}"
             "#optionsPanel QLabel#panelSection{font-weight:600;margin-top:8px;}"
             "#optionsPanel QSlider::groove:horizontal{height:4px;border-radius:2px;background:rgba(128,128,128,80);}"
@@ -116,20 +133,37 @@ class OptionsPanel(QFrame):
 
     # --- posição e arraste --------------------------------------------------
     # Por padrão o painel abre no canto superior direito; pode ser arrastado para qualquer ponto (é translúcido).
-    def _clamp(self, x: int, y: int) -> tuple[int, int]:
+    def _area(self) -> QRect:
+        """Área visível da edição (sem as barras de rolagem), em coordenadas do pai."""
         par = self.parentWidget()
-        return (min(max(x, 4), max(4, par.width() - self.width() - 4)),
-                min(max(y, 4), max(4, par.height() - self.height() - 4)))
+        vp = par.viewport() if hasattr(par, "viewport") else None
+        return vp.geometry() if vp is not None else par.rect()
+
+    def _clamp(self, x: int, y: int) -> tuple[int, int]:
+        a = self._area()
+        return (min(max(x, a.left() + 4), max(a.left() + 4, a.right() + 1 - self.width() - 4)),
+                min(max(y, a.top() + 4), max(a.top() + 4, a.bottom() + 1 - self.height() - 4)))
+
+    def _fit_size(self):
+        """Largura do conteúdo (214–250 px) e altura limitada à área visível; o excedente rola dentro do painel."""
+        self._lay.activate()
+        hint = self._inner.sizeHint()
+        m = self.layout().contentsMargins()
+        chrome_h = m.top() + m.bottom() + self._grip.sizeHint().height()
+        avail_h = max(80, self._area().height() - 8)
+        h = min(hint.height() + chrome_h, avail_h)
+        scrolling = hint.height() + chrome_h > avail_h
+        w = min(max(hint.width(), 196), 232) + m.left() + m.right() + (14 if scrolling else 0)
+        self.setFixedSize(w, h)
 
     def reposition(self):
         par = self.parentWidget()
         if par is None:
             return
-        self.adjustSize()
+        self._fit_size()
+        a = self._area()
         if self._user_pos is None:
-            sb = par.verticalScrollBar() if hasattr(par, "verticalScrollBar") else None
-            sbw = sb.width() if sb is not None and sb.isVisible() else 0
-            x, y = par.width() - sbw - self.width() - self.MARGIN, self.MARGIN
+            x, y = a.right() + 1 - self.width() - self.MARGIN, a.top() + self.MARGIN
         else:
             x, y = self._user_pos.x(), self._user_pos.y()
         self.move(*self._clamp(x, y))

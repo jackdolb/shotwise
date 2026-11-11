@@ -224,7 +224,8 @@ def run_installer(path: str) -> bool:
     """Executa o instalador em modo silencioso (ele mesmo fecha o Shotwise em uso)."""
     from PySide6.QtCore import QProcess
 
-    return QProcess.startDetached(path, ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"])
+    # /RELAUNCH=1: o instalador reabre o Shotwise ao terminar (a atualização é silenciosa, sem tela final)
+    return QProcess.startDetached(path, ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/RELAUNCH=1"])
 
 
 class UpdateWorker(QThread):

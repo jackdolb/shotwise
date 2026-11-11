@@ -127,8 +127,15 @@ Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.gif\shell\Shotwise
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "Abrir o Shotwise agora"; Flags: nowait postinstall skipifsilent
+; atualizacao feita pelo proprio Shotwise (/RELAUNCH=1): reabre o programa ao terminar
+Filename: "{app}\{#MyAppExe}"; Flags: nowait; Check: RelaunchAfterUpdate
 
 [Code]
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
+
 function OpenEventW(Access: Cardinal; Inherit: Integer; Name: String): Cardinal; external 'OpenEventW@kernel32.dll stdcall';
 function SetEvent(Handle: Cardinal): Integer; external 'SetEvent@kernel32.dll stdcall';
 function CloseHandle(Handle: Cardinal): Integer; external 'CloseHandle@kernel32.dll stdcall';

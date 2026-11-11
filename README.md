@@ -78,7 +78,7 @@ O script gera o aplicativo com o PyInstaller e o instalador `dist_installer\Shot
 - **Atualizar**: aumente `__version__` em `shotwise/__init__.py`, rode `build_installer.bat` de novo e execute o novo instalador sobre o antigo. Ele pede ao Shotwise que se encerre sozinho (e, se não obedecer, fecha o `Shotwise.exe`), troca os arquivos e preserva configurações, capturas editáveis e a escolha de iniciar com o Windows. O `AppId` do `installer\Shotwise.iss` não pode mudar.
 - **Desinstalar**: pelo Windows (Aplicativos instalados). Ele pergunta se deve apagar também `%APPDATA%\Shotwise` (configurações e capturas editáveis). Os PNGs salvos nunca são apagados.
 - **Assinatura**: defina `SHOTWIN_SIGN_THUMBPRINT` com a impressão digital de um certificado de assinatura de código e o script assina o `.exe` e o instalador com o `signtool`. Sem assinatura, o Controle de Aplicativo Inteligente e o SmartScreen podem bloquear.
-- Instalação silenciosa (para scripts): `Shotwise-Setup-1.2.1.exe /VERYSILENT /SUPPRESSMSGBOXES`.
+- Instalação silenciosa (para scripts): `Shotwise-Setup-1.2.2.exe /VERYSILENT /SUPPRESSMSGBOXES`.
 - Se precisar de `.msi` (Intune/GPO), dá para gerar com o WiX a partir da mesma pasta `dist\Shotwise`.
 
 **Gerar um executável único (`dist\Shotwise.exe`)**

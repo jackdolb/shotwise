@@ -11,7 +11,7 @@ from PySide6.QtGui import QAction, QCursor, QDesktopServices, QGuiApplication, Q
 from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox, QSystemTrayIcon
 
 from .i18n import tr
-from . import APP_NAME
+from . import APP_NAME, __version__
 from .clipboard import copy_image, copy_text
 from .config import apply_install_defaults, Config
 from . import library, logsetup
@@ -68,16 +68,32 @@ class ShotwiseApp(QObject):
         self._last_gif = ""
         self._tray_action = None
         self.tray.messageClicked.connect(self._tray_message_clicked)
-        self.tray.setToolTip(APP_NAME)
+        self.tray.setToolTip(f"{APP_NAME} {__version__}")
         self.tray.activated.connect(self._tray_activated)
         self._build_menu()
         self.tray.show()
         self.register_hotkeys(show_ok=False)
         self._update_worker = None
+        self._announce_new_version()
         if self.cfg.update_on_start and (self.cfg.update_repo or self.cfg.update_folder):
             QTimer.singleShot(8000, self._check_update_at_start)       # espera o início terminar
 
     # ------------------------------------------------------------------
+    def _announce_new_version(self):
+        """Depois de uma atualização, avisa na bandeja qual versão está em uso."""
+        prev = self.cfg.last_version
+        if prev == __version__:
+            return
+        self.cfg.last_version = __version__
+        try:
+            self.cfg.save()
+        except OSError:
+            pass
+        if prev:
+            QTimer.singleShot(1500, lambda: self.tray.showMessage(
+                APP_NAME, tr("Shotwise atualizado para a versão {v}.").format(v=__version__),
+                QSystemTrayIcon.MessageIcon.Information, 6000))
+
     def _check_update_at_start(self):
         from .updater import UpdateWorker
         c = self.cfg

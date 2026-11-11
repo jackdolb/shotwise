@@ -77,6 +77,7 @@ class Config:
     update_repo: str = UPDATE_REPO_DEFAULT   # usuario/repositorio
     update_folder: str = ""         # pasta com o instalador (e, opcionalmente, latest.json)
     update_on_start: bool = False   # verificar ao iniciar
+    last_version: str = ""          # última versão aberta (para avisar "atualizado para X")
     update_require_signature: bool = True    # só instala se o instalador tiver assinatura digital válida
     update_signer: str = UPDATE_SIGNER_DEFAULT   # impressão(ões) digital(is) aceitas, separadas por vírgula
     scroll_delay_ms: int = 300      # espera após cada rolagem

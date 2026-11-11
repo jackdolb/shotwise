@@ -2801,3 +2801,46 @@ def test_highlight_opacity_always_translucent(qapp):
     assert highlight_pct(it.color) == 20
     it.apply_style(highlight_opacity=500)
     assert it.color.alpha() < 255
+
+
+def test_write_sha256_tool(tmp_path):
+    import hashlib
+    import subprocess  # nosec B404 - roda o próprio script do projeto no teste
+    import sys as _sys
+
+    f = tmp_path / "Shotwise-Setup-9.9.9.exe"
+    f.write_bytes(b"abc" * 1000)
+    tool = os.path.join(os.path.dirname(__file__), "..", "tools", "write_sha256.py")
+    r = subprocess.run([_sys.executable, tool, str(f)], capture_output=True, text=True)  # nosec B603
+    assert r.returncode == 0
+    line = (tmp_path / "Shotwise-Setup-9.9.9.exe.sha256").read_text(encoding="ascii")
+    assert line == hashlib.sha256(b"abc" * 1000).hexdigest() + "  Shotwise-Setup-9.9.9.exe\n"
+    r = subprocess.run([_sys.executable, tool, str(tmp_path / "nao-existe.exe")], capture_output=True, text=True)  # nosec B603
+    assert r.returncode == 1
+
+
+def test_panel_always_inside_visible_area(qapp):
+    from shotwise.config import Config
+    from shotwise.editor import EditorWindow
+
+    win = EditorWindow(solid(1600, 1200, "#fff"), Config())
+    win.resize(700, 420)                                   # janela pequena: painel do fundo é mais alto que a área
+    win.show()
+    qapp.processEvents()
+    tb = win._opts_tb
+    for tool in ("arrow", "background"):
+        win.select_tool(tool)
+        qapp.processEvents()
+        area = win.view.viewport().geometry()
+        assert area.contains(tb.geometry()), (tool, area, tb.geometry())
+    assert tb._scroll.verticalScrollBar().maximum() > 0    # o excesso rola dentro do painel
+    tb._user_pos = QPoint(5000, 5000)                       # posição salva numa janela maior
+    tb.reposition()
+    assert win.view.viewport().geometry().contains(tb.geometry())
+
+
+def test_tray_tooltip_has_version():
+    import inspect
+    from shotwise import app
+
+    assert 'f"{APP_NAME} {__version__}"' in inspect.getsource(app)
