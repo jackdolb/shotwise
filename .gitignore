@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+dist_installer/
+libs/
+*.pfx
+*.p12
+cert/*.pfx
+config.json
