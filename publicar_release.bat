@@ -30,7 +30,7 @@ set /p OK=Publicar agora? (S/N):
 if /i not "!OK!"=="S" goto :fim
 gh release create v%VER% !ASSETS! --title "Shotwise %VER%" --generate-notes
 if errorlevel 1 (
-    echo Falha ao publicar. Confira o login (gh auth status) e se a tag v%VER% ja existe.
+    echo Falha ao publicar. Confira o login ^(gh auth status^) e se a tag v%VER% ja existe.
     goto :fim
 )
 echo Pronto: a versao %VER% foi publicada.

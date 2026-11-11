@@ -562,7 +562,7 @@ class EditorWindow(QMainWindow):
         self.view.viewport().installEventFilter(self)
         self._opt_actions: dict[str, list] = {g: [] for g in (
             "color", "width", "font", "strength", "textbg", "fill", "step", "round", "resize", "bg", "zoomf",
-            "rborder")}
+            "rborder", "hlop")}
 
         # cor: amostra com menu (paleta e "Mais cores…") e conta-gotas só com ícone
         self.btn_color = QToolButton()
@@ -599,6 +599,13 @@ class EditorWindow(QMainWindow):
         self.ls_width = self._slider("width", tr("Espessura"), 1, 40, 4, lambda v: f"{v} px")
         self.sp_width = self.ls_width.sl
         self.sp_width.valueChanged.connect(self._on_width)
+
+        # marca-texto: opacidade (sempre translúcido)
+        from .annotations import HIGHLIGHT_DEFAULT_PCT, HIGHLIGHT_MAX_PCT, HIGHLIGHT_MIN_PCT
+        self.ls_hlop = self._slider("hlop", tr("Opacidade"), HIGHLIGHT_MIN_PCT, HIGHLIGHT_MAX_PCT, HIGHLIGHT_DEFAULT_PCT,
+                                    lambda v: f"{v}%",
+                                    tr("Mais à direita = cor mais forte; o marca-texto continua sempre transparente"))
+        self.ls_hlop.sl.valueChanged.connect(self._on_hlop)
 
         # tarja sólida: sempre opaca (não reversível); só borda e espessura da borda
         self._rborder_color = QColor("#ffffff")
@@ -810,7 +817,7 @@ class EditorWindow(QMainWindow):
             "fill": self._argb(sc.opt_fill), "fill_color": self._argb(self._fill_color),
             "textbg_color": self._argb(self._textbg_color),
             "step_border_color": self._argb(self._step_border_color),
-            "redact_width": int(sc.opt_redact_width),
+            "redact_width": int(sc.opt_redact_width), "highlight_opacity": int(sc.opt_highlight_opacity),
             "redact_border": self._argb(sc.opt_redact_border), "redact_border_color": self._argb(self._rborder_color),
         }
         bg = sc.background.to_dict()
@@ -852,6 +859,8 @@ class EditorWindow(QMainWindow):
             self.sl_round.setValue(int(num("round", self.sl_round.minimum(), self.sl_round.maximum(), self.sl_round.value())))
             self.sl_zoomf.setValue(round(num("zoom", 1.2, 8.0, self.scene.opt_zoom) * 10))
             self.ls_rwidth.setValue(int(num("redact_width", 1, 20, 3)))
+            self.ls_hlop.setValue(int(num("highlight_opacity", self.ls_hlop.sl.minimum(), self.ls_hlop.sl.maximum(),
+                                          self.ls_hlop.value())))
             rc = col("redact_border_color")
             if rc is not None:
                 self._rborder_color = rc
@@ -934,7 +943,7 @@ class EditorWindow(QMainWindow):
             return {"color", "width", "zoomf"}
         if isinstance(it, ShapeItem):
             return {"rect": {"color", "width", "fill"}, "ellipse": {"color", "width", "fill"},
-                    "highlight": {"color"}, "redact": {"color", "rborder"}, "pixelate": {"strength"},
+                    "highlight": {"color", "hlop"}, "redact": {"color", "rborder"}, "pixelate": {"strength"},
                     "blur": {"strength"}}.get(it.kind, set())
         if isinstance(it, LineItem):
             return {"color", "width"} | {"round"}
@@ -958,6 +967,8 @@ class EditorWindow(QMainWindow):
             g.add("zoomf")
         if tool == "redact":
             g.add("rborder")
+        if tool == "highlight":
+            g.add("hlop")
         g |= {"resize": {"resize"}, "background": {"bg"}}.get(tool, set())
         return g
 
@@ -1048,6 +1059,9 @@ class EditorWindow(QMainWindow):
                     quiet(self.sl_fillop, self.sl_fillop.setValue, round(self._fill_color.alphaF() * 100))
             if it.kind in ("pixelate", "blur"):
                 quiet(self.sl_strength, self.sl_strength.setValue, int(it.strength))
+            if it.kind == "highlight":
+                from .annotations import highlight_pct
+                quiet(self.ls_hlop.sl, self.ls_hlop.sl.setValue, highlight_pct(it.color))
             if it.kind == "redact":
                 quiet(self.cb_rborder, self.cb_rborder.setChecked, it.fill is not None)
                 quiet(self.ls_rwidth.sl, self.ls_rwidth.sl.setValue, int(it.width))
@@ -1167,6 +1181,10 @@ class EditorWindow(QMainWindow):
     def _on_step_size(self, v: int):
         self.scene.opt_step_size = v
         self.scene.apply_style_to_selection(step_size=v)
+
+    def _on_hlop(self, v: int):
+        self.scene.opt_highlight_opacity = v
+        self.scene.apply_style_to_selection(highlight_opacity=v)
 
     def _on_rborder(self):
         b = QColor(self._rborder_color) if self.cb_rborder.isChecked() else None

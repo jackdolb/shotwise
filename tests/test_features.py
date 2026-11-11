@@ -2776,3 +2776,28 @@ def test_updater_pins_signer_even_with_old_empty_config(tmp_path, monkeypatch):
     assert pinned == normalize_thumbprints(UPDATE_SIGNER_DEFAULT)
     assert signature_ok("Valid", UPDATE_SIGNER_DEFAULT.lower(), pinned)
     assert not signature_ok("Valid", "A" * 40, pinned) and not signature_ok("NotSigned", "", pinned)
+
+
+def test_highlight_opacity_always_translucent(qapp):
+    from shotwise.annotations import highlight_pct
+    from shotwise.config import Config
+    from shotwise.editor import EditorWindow
+
+    win = EditorWindow(solid(300, 200, "#fff"), Config())
+    win.show()
+    win.select_tool("highlight")
+    assert all(a.isVisible() for a in win._opt_actions["hlop"])
+    assert win.ls_hlop.sl.maximum() < 100                  # nunca chega a 100%: continua transparente
+    win.ls_hlop.setValue(20)
+    _drag_draw(win.scene, 20, 20, 150, 60)
+    it = next(i for i in win.scene.items() if isinstance(i, ShapeItem))
+    assert it.kind == "highlight" and highlight_pct(it.color) == 20
+    win.ls_hlop.setValue(80)
+    assert highlight_pct(it.color) == 80 and it.color.alpha() < 255
+    win.set_color(QColor("#00ff00"))
+    assert highlight_pct(it.color) == 80                    # trocar a cor mantém a opacidade
+    win.scene.undo_stack.undo()
+    win.scene.undo_stack.undo()
+    assert highlight_pct(it.color) == 20
+    it.apply_style(highlight_opacity=500)
+    assert it.color.alpha() < 255

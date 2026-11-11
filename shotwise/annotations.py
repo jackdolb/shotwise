@@ -27,6 +27,20 @@ LAYER_Z0 = -1000
 
 RECT_KINDS = ("rect", "ellipse", "highlight", "redact", "pixelate", "blur")
 EFFECT_KINDS = ("pixelate", "blur")
+
+# marca-texto: sempre translúcido; a opacidade vai de 10% a 90%
+HIGHLIGHT_ALPHA = 105
+HIGHLIGHT_DEFAULT_PCT = round(HIGHLIGHT_ALPHA / 2.55)
+HIGHLIGHT_MIN_PCT, HIGHLIGHT_MAX_PCT = 10, 90
+
+
+def highlight_alpha(pct: float) -> int:
+    return round(min(max(pct, HIGHLIGHT_MIN_PCT), HIGHLIGHT_MAX_PCT) * 2.55)
+
+
+def highlight_pct(color: QColor) -> int:
+    a = color.alpha()
+    return HIGHLIGHT_DEFAULT_PCT if a >= 255 else min(max(round(a / 2.55), HIGHLIGHT_MIN_PCT), HIGHLIGHT_MAX_PCT)
 TOOLS = ("select", "arrow", "line", "rect", "ellipse", "highlight", "pen", "text", "step",
          "pixelate", "blur", "redact", "zoom", "crop")
 ZOOM_MIN, ZOOM_MAX = 1.2, 8.0
@@ -489,7 +503,8 @@ class ShapeItem(QGraphicsRectItem, AnnotMixin):
             painter.drawRect(r) if self.kind == "rect" else painter.drawEllipse(r)
         elif self.kind == "highlight":
             c = QColor(self.color)
-            c.setAlpha(105)
+            a = self.color.alpha()
+            c.setAlpha(HIGHLIGHT_ALPHA if a >= 255 else min(a, 230))   # sempre translúcido (255 = itens antigos)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(c)
             painter.drawRect(r)
@@ -601,7 +616,11 @@ class ShapeItem(QGraphicsRectItem, AnnotMixin):
             c = QColor(kw["color"])
             if self.kind == "redact":
                 c.setAlpha(255)                              # a tarja é sempre opaca
+            elif self.kind == "highlight":
+                c.setAlpha(self.color.alpha())               # trocar a cor não muda a opacidade do marca-texto
             self.color = c
+        if kw.get("highlight_opacity") is not None and self.kind == "highlight":
+            self.color.setAlpha(highlight_alpha(kw["highlight_opacity"]))
         if kw.get("redact_width") is not None and self.kind == "redact":
             self.width = kw["redact_width"]
         if kw.get("width") is not None and self.kind in ("rect", "ellipse"):
@@ -1884,6 +1903,7 @@ class AnnotScene(QGraphicsScene):
         self.opt_text_bg: QColor | None = None
         self.opt_fill: QColor | None = None
         self.opt_redact_border: QColor | None = None
+        self.opt_highlight_opacity = HIGHLIGHT_DEFAULT_PCT    # %
         self.opt_redact_width = 3
         self.opt_zoom = 2.5            # aumento da lupa
         self.opt_zoom_arrow = True     # seta ligando a origem à lupa
@@ -2235,6 +2255,9 @@ class AnnotScene(QGraphicsScene):
                 QColor("#ffd60a") if self.tool == "highlight" and self.opt_color == QColor("#ff3b30") else self.opt_color)
             fill = self.opt_fill if self.tool in ("rect", "ellipse") else None
             width = self.opt_width
+            if self.tool == "highlight":
+                color = QColor(color)
+                color.setAlpha(highlight_alpha(self.opt_highlight_opacity))
             if self.tool == "redact":
                 fill, width = self.opt_redact_border, self.opt_redact_width
             item = ShapeItem(self.tool, QRectF(pos, pos), color, width, self.opt_strength, fill)

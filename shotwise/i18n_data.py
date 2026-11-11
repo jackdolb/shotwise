@@ -654,4 +654,5 @@ T: dict[str, tuple[str, str]] = {
     'Pressione Enter para confirmar o recorte (Esc cancela).': ('Press Enter to confirm the crop (Esc cancels).', 'Pulse Enter para confirmar el recorte (Esc cancela).'),
     'Arraste sobre o texto da imagem para reconhecê-lo.': ('Drag over the text in the image to recognize it.', 'Arrastre sobre el texto de la imagen para reconocerlo.'),
     'Selecione na imagem a área que deseja manter.': ('Select the area of the image you want to keep.', 'Seleccione en la imagen el área que desea conservar.'),
+    'Mais à direita = cor mais forte; o marca-texto continua sempre transparente': ('Further right = stronger color; the highlighter always stays transparent', 'Más a la derecha = color más intenso; el marcador siempre sigue transparente'),
 }
