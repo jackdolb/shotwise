@@ -63,18 +63,35 @@ call :sign_one %1
 exit /b 0
 
 :sign_one
-if "%MODE%"=="pfx" goto :sign_pfx
-"%SIGNTOOL%" sign /fd SHA256 /tr "%TS%" /td SHA256 /sha1 %THUMB% %1 >nul
-goto :sign_result
-:sign_pfx
-"%SIGNTOOL%" sign /fd SHA256 /tr "%TS%" /td SHA256 /f "%SHOTWISE_SIGN_PFX%" /p "%SHOTWISE_SIGN_PASSWORD%" %1 >nul
-:sign_result
-if errorlevel 1 goto :sign_failed
+rem tenta o servidor de carimbo configurado e, se ele nao responder, servidores alternativos (2 tentativas cada)
+set "SIGNED="
+for %%T in ("%TS%" "http://timestamp.digicert.com" "http://timestamp.sectigo.com" "http://timestamp.globalsign.com/tsa/r6advanced1") do (
+    if not defined SIGNED call :try_ts %1 %%T
+    if not defined SIGNED call :try_ts %1 %%T
+)
+if not defined SIGNED goto :sign_failed
 set /a COUNT+=1
 exit /b 0
+
+:try_ts
+if "%MODE%"=="pfx" goto :try_pfx
+"%SIGNTOOL%" sign /fd SHA256 /tr %2 /td SHA256 /sha1 %THUMB% %1 >nul 2>nul
+goto :try_result
+:try_pfx
+"%SIGNTOOL%" sign /fd SHA256 /tr %2 /td SHA256 /f "%SHOTWISE_SIGN_PFX%" /p "%SHOTWISE_SIGN_PASSWORD%" %1 >nul 2>nul
+:try_result
+if errorlevel 1 goto :try_again
+set "SIGNED=1"
+exit /b 0
+:try_again
+echo [assinatura] servidor de carimbo %~2 nao respondeu; tentando de novo...
+ping -n 4 127.0.0.1 >nul
+exit /b 1
+
 :sign_failed
 set /a FAIL+=1
 echo [assinatura] FALHOU: %1
+echo   Nenhum servidor de carimbo de tempo respondeu. Confira a internet ou o proxy e rode o build de novo.
 exit /b 1
 
 :done
