@@ -49,6 +49,7 @@ class ShotwiseApp(QObject):
             except OSError:
                 log.warning("não foi possível atualizar a inicialização automática", exc_info=True)
         self.hotkeys = HotkeyManager()
+        ShortcutsDialog.suspend_hook = self._suspend_hotkeys
         self.editors: list[EditorWindow] = []
         self.pins: list[PinWindow] = []
         self._ocr_jobs: list = []
@@ -793,6 +794,13 @@ class ShotwiseApp(QObject):
         dlg.show()
         dlg.raise_()
         dlg.activateWindow()
+
+    def _suspend_hotkeys(self, on: bool):
+        """Pausa os atalhos globais enquanto o usuário escolhe novos (Print Screen tem de chegar ao campo)."""
+        if on:
+            self.hotkeys.unregister_all()
+        else:
+            self.register_hotkeys(show_ok=False)
 
     def open_shortcuts(self):
         self._show_dialog("_shortcuts_dlg", lambda: ShortcutsDialog(self.cfg), self._shortcuts_saved)

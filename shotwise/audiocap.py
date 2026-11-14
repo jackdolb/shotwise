@@ -113,6 +113,60 @@ def default_srcs(durations: list[int]) -> list[int]:
     return out
 
 
+def _loopback_devices(p, pa) -> list[dict]:
+    """Todas as saídas de áudio com loopback (a padrão primeiro). Gravar todas resolve fone de ouvido, headset
+    Bluetooth no modo chamada (Teams usa o "dispositivo de comunicação") e saídas que não são a padrão."""
+    devs: list[dict] = []
+    try:
+        devs.append(p.get_default_wasapi_loopback())
+    except Exception:  # noqa: BLE001 - sem saída padrão: segue com as demais
+        log.debug("audio: sem loopback padrão", exc_info=True)
+    seen = {d["index"] for d in devs}
+    for lb in p.get_loopback_device_info_generator():
+        if lb["index"] not in seen:
+            devs.append(lb)
+            seen.add(lb["index"])
+    return devs
+
+
+def probe_system_audio(seconds: float = 3.0) -> list[tuple[str, float]]:
+    """Escuta todas as saídas por alguns segundos e devolve (nome, pico 0..1) de cada uma. Para o botão de teste."""
+    import pyaudiowpatch as pa
+
+    p = pa.PyAudio()
+    peaks: dict[str, float] = {}
+    streams = []
+    try:
+        for dev in _loopback_devices(p, pa):
+            name = str(dev["name"]).replace(" [Loopback]", "")
+            ch, rate = int(dev["maxInputChannels"]), int(dev["defaultSampleRate"])
+            if ch < 1 or rate < 8000:
+                continue
+            peaks[name] = 0.0
+
+            def cb(in_data, _f, _t, _s, key=name):
+                a = np.frombuffer(in_data[:len(in_data) // 2 * 2], dtype="<i2")
+                if len(a):
+                    peaks[key] = max(peaks[key], float(np.abs(a.astype(np.int32)).max()) / 32768.0)
+                return (None, pa.paContinue)
+            try:
+                streams.append(p.open(format=pa.paInt16, channels=ch, rate=rate, input=True,
+                                      input_device_index=dev["index"], frames_per_buffer=rate // 20, stream_callback=cb))
+            except Exception as e:  # noqa: BLE001
+                log.info("audio: teste: não abriu %s: %s", name, e)
+                peaks.pop(name, None)
+        time.sleep(max(0.5, seconds))
+    finally:
+        for st in streams:
+            try:
+                st.stop_stream()
+                st.close()
+            except Exception:  # noqa: BLE001
+                pass
+        p.terminate()
+    return sorted(peaks.items(), key=lambda kv: -kv[1])
+
+
 class AudioCapture(QObject):
     """Captura sistema e/ou microfone durante a gravação. ``start()`` abre os dispositivos, ``begin()`` marca o instante
     zero (junto do relógio dos quadros) e ``stop(end_ms)`` devolve o PCM misturado."""
@@ -124,7 +178,8 @@ class AudioCapture(QObject):
         self._lock = threading.Lock()
         self._t0: float | None = None
         self._tracks: dict[str, Track] = {}
-        self._pa = self._stream = None
+        self._pa = None
+        self._streams: list = []
         self._src = self._io = None
 
     @property
@@ -153,7 +208,8 @@ class AudioCapture(QObject):
                 log.warning("audio: sistema indisponível: %s", e)
                 self.warnings.append(tr("Não foi possível capturar o som do sistema; o vídeo sairá sem ele."))
                 self._close_system()
-                self._tracks.pop("system", None)
+                for k in [k for k in self._tracks if k.startswith("system")]:
+                    self._tracks.pop(k, None)
         if self.want_mic:
             try:
                 self._start_mic()
@@ -174,26 +230,28 @@ class AudioCapture(QObject):
             return
         p = pa.PyAudio()
         self._pa = p
-        wasapi = p.get_host_api_info_by_type(pa.paWASAPI)
-        spk = p.get_device_info_by_index(wasapi["defaultOutputDevice"])
-        if not spk.get("isLoopbackDevice"):
-            for lb in p.get_loopback_device_info_generator():
-                if spk["name"] in lb["name"]:
-                    spk = lb
-                    break
-            else:
-                raise RuntimeError("sem dispositivo de loopback para a saída padrão")
-        rate, ch = int(spk["defaultSampleRate"]), int(spk["maxInputChannels"])
-        if ch < 1 or rate < 8000:
-            raise RuntimeError("formato do dispositivo inválido")
-        self._tracks["system"] = Track(rate, ch, "s16")
+        opened = []
+        for dev in _loopback_devices(p, pa):
+            rate, ch = int(dev["defaultSampleRate"]), int(dev["maxInputChannels"])
+            if ch < 1 or rate < 8000:
+                continue
+            key = f"system:{dev['index']}"
+            self._tracks[key] = Track(rate, ch, "s16")
 
-        def cb(in_data, _frames, _time_info, _status):
-            self._feed("system", in_data)
-            return (None, pa.paContinue)
-
-        self._stream = p.open(format=pa.paInt16, channels=ch, rate=rate, input=True,
-                              input_device_index=spk["index"], frames_per_buffer=rate // 20, stream_callback=cb)
+            def cb(in_data, _frames, _time_info, _status, k=key):
+                self._feed(k, in_data)
+                return (None, pa.paContinue)
+            try:
+                self._streams.append(p.open(format=pa.paInt16, channels=ch, rate=rate, input=True,
+                                            input_device_index=dev["index"], frames_per_buffer=rate // 20,
+                                            stream_callback=cb))
+                opened.append(str(dev["name"]))
+            except Exception as e:  # noqa: BLE001 - uma saída com problema não impede as outras
+                log.info("audio: loopback não abriu (%s): %s", dev.get("name"), e)
+                self._tracks.pop(key, None)
+        if not opened:
+            raise RuntimeError("nenhuma saída de áudio pôde ser gravada")
+        log.info("audio: gravando o som de: %s", "; ".join(opened))
 
     def _start_mic(self) -> None:
         from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
@@ -229,14 +287,14 @@ class AudioCapture(QObject):
 
     # --- encerrar -------------------------------------------------------------------------
     def _close_system(self) -> None:
-        stream, pa_ = self._stream, self._pa
-        self._stream = self._pa = None
-        try:
-            if stream is not None:
+        streams, pa_ = self._streams, self._pa
+        self._streams, self._pa = [], None
+        for stream in streams:
+            try:
                 stream.stop_stream()
                 stream.close()
-        except Exception:  # noqa: BLE001
-            log.debug("audio: falha ao fechar o stream", exc_info=True)
+            except Exception:  # noqa: BLE001
+                log.debug("audio: falha ao fechar o stream", exc_info=True)
         try:
             if pa_ is not None:
                 pa_.terminate()
@@ -273,9 +331,19 @@ class AudioCapture(QObject):
         with self._lock:
             tracks = dict(self._tracks)
         arrays = []
-        for t in tracks.values():
+        sys_peak, has_sys = 0.0, False
+        for k, t in tracks.items():
             t.finish(end_ms)
-            arrays.append(to_stereo48(t.raw(), t.rate, t.channels, t.sample))
+            a = to_stereo48(t.raw(), t.rate, t.channels, t.sample)
+            arrays.append(a)
+            if k.startswith("system"):
+                has_sys = True
+                pk = float(np.abs(a).max()) if len(a) else 0.0
+                sys_peak = max(sys_peak, pk)
+                log.info("audio: %s: %d quadros, pico %.4f", k, t.frames, pk)
+        if has_sys and sys_peak < 1e-3:
+            self.warnings.append(tr("O som do sistema foi gravado, mas veio em silêncio. Use Configurações > Vídeo e GIF > "
+                                    "Testar som do sistema para ver qual saída está recebendo o áudio."))
         pcm = mix_to_pcm(arrays)
         want = int(end_ms) * BYTES_PER_MS
         return pcm[:want] + bytes(max(0, want - len(pcm))) if pcm else b""

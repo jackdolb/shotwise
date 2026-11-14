@@ -2844,3 +2844,121 @@ def test_tray_tooltip_has_version():
     from shotwise import app
 
     assert 'f"{APP_NAME} {__version__}"' in inspect.getsource(app)
+
+
+class _FakePA:
+    """Imita o pyaudiowpatch: duas saídas com loopback; só o fone de ouvido (não padrão) recebe som."""
+    paWASAPI, paInt16, paContinue = 13, 8, 0
+
+    def __init__(self, loud_index=2):
+        self.loud = loud_index
+        self.devs = [{"index": 1, "name": "Alto-falantes (Realtek) [Loopback]", "maxInputChannels": 2,
+                      "defaultSampleRate": 48000.0, "isLoopbackDevice": True},
+                     {"index": 2, "name": "Fone de ouvido (Headset) [Loopback]", "maxInputChannels": 1,
+                      "defaultSampleRate": 16000.0, "isLoopbackDevice": True}]
+        self.opened = []
+
+    def PyAudio(self):
+        return self
+
+    def get_default_wasapi_loopback(self):
+        return self.devs[0]
+
+    def get_loopback_device_info_generator(self):
+        yield from self.devs
+
+    def open(self, format, channels, rate, input, input_device_index, frames_per_buffer, stream_callback):
+        import numpy as np
+        fake = self
+
+        class S:
+            def __init__(s):
+                s.cb, s.idx = stream_callback, input_device_index
+                fake.opened.append(s)
+
+            def push(s, ms):
+                n = int(rate * ms / 1000)
+                val = 9000 if s.idx == fake.loud else 0
+                s.cb(np.full(n * channels, val, "<i2").tobytes(), n, None, 0)
+
+            def stop_stream(s):
+                pass
+
+            def close(s):
+                pass
+        return S()
+
+    def terminate(self):
+        pass
+
+
+def test_system_audio_records_every_output_and_warns_on_silence(monkeypatch):
+    import sys as _sys
+    import time as _time
+
+    import numpy as np
+    from shotwise import audiocap as ac
+
+    fake = _FakePA(loud_index=2)
+    monkeypatch.setitem(_sys.modules, "pyaudiowpatch", fake)
+    cap = ac.AudioCapture(system=True, mic=False)
+    cap.start()
+    assert len(fake.opened) == 2                           # a saída padrão E o fone de ouvido
+    cap.begin()
+    _time.sleep(0.25)
+    for st in fake.opened:
+        st.push(200)
+    pcm = cap.stop(250)
+    a = np.frombuffer(pcm, "<i2")
+    assert a.max() > 1000 and not cap.warnings             # o som do fone entrou na mistura
+
+    fake2 = _FakePA(loud_index=99)                         # nada tocando em lugar nenhum
+    monkeypatch.setitem(_sys.modules, "pyaudiowpatch", fake2)
+    cap2 = ac.AudioCapture(system=True, mic=False)
+    cap2.start()
+    cap2.begin()
+    _time.sleep(0.1)
+    for st in fake2.opened:
+        st.push(100)
+    cap2.stop(120)
+    assert any("silêncio" in w for w in cap2.warnings)
+
+
+def test_probe_system_audio_reports_peaks(monkeypatch):
+    import sys as _sys
+    import threading
+
+    from shotwise import audiocap as ac
+
+    fake = _FakePA(loud_index=2)
+    monkeypatch.setitem(_sys.modules, "pyaudiowpatch", fake)
+    t = threading.Timer(0.2, lambda: [st.push(100) for st in fake.opened])
+    t.start()
+    res = dict(ac.probe_system_audio(0.5))
+    t.join()
+    assert res["Fone de ouvido (Headset)"] > 0.2 and res["Alto-falantes (Realtek)"] == 0.0
+
+
+def test_hotkey_edit_accepts_print_screen_on_key_release(qapp):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+    from shotwise.config import Config
+    from shotwise.hotkeys import parse_hotkey
+    from shotwise.settings_dialog import HotkeyEdit, ShortcutsDialog
+
+    ed = HotkeyEdit()
+    # no Windows só chega a "tecla solta" do Print Screen
+    ed.keyReleaseEvent(QKeyEvent(QEvent.Type.KeyRelease, Qt.Key.Key_Print, Qt.KeyboardModifier.NoModifier))
+    assert ed.keySequence().toString() == "Print" and parse_hotkey("Print") == (0, 0x2C)
+    ed.keyReleaseEvent(QKeyEvent(QEvent.Type.KeyRelease, Qt.Key.Key_Print, Qt.KeyboardModifier.ShiftModifier))
+    assert ed.keySequence().toString() == "Shift+Print" and parse_hotkey("Shift+Print") is not None
+    # os atalhos globais ficam pausados enquanto a janela de atalhos está aberta
+    calls = []
+    ShortcutsDialog.suspend_hook = calls.append
+    try:
+        dlg = ShortcutsDialog(Config())
+        dlg.show()
+        dlg.reject()
+    finally:
+        ShortcutsDialog.suspend_hook = None
+    assert calls == [True, False]

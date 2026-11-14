@@ -146,6 +146,11 @@ class SettingsDialog(QDialog):
         self.chk_aud_sys.setChecked(cfg.mp4_audio_system)
         self.chk_aud_sys.setToolTip(tr("Somente no Windows. Precisa do componente PyAudioWPatch; sem ele o vídeo sai sem esse som."))
         forms["video"].addRow("", self.chk_aud_sys)
+        self.btn_aud_test = QPushButton(tr("Testar som do sistema"))
+        self.btn_aud_test.setToolTip(tr("Deixe um áudio tocando (YouTube, Teams…) e clique: o Shotwise escuta por 3 segundos "
+                                        "e mostra quais saídas de áudio estão recebendo som."))
+        self.btn_aud_test.clicked.connect(self._test_system_audio)
+        forms["video"].addRow("", self.btn_aud_test)
         self.chk_aud_mic = QCheckBox(tr("Gravar o microfone"))
         self.chk_aud_mic.setChecked(cfg.mp4_audio_mic)
         forms["video"].addRow("", self.chk_aud_mic)
@@ -208,7 +213,7 @@ class SettingsDialog(QDialog):
         forms["geral"].addRow(tr("Tema"), self.cmb_theme)
         self.cmb_tools = QComboBox()
         for key, label in (("left", tr("À esquerda")), ("right", tr("À direita")),
-                           ("top", tr("Em cima (abaixo dos ícones, acima das cores)"))):
+                           ("top", tr("Em cima"))):
             self.cmb_tools.addItem(label, key)
         self.cmb_tools.setCurrentIndex(max(0, self.cmb_tools.findData(cfg.tools_position)))
         forms["captura"].addRow(tr("Barra de ferramentas do editor"), self.cmb_tools)
@@ -263,6 +268,50 @@ class SettingsDialog(QDialog):
         lay.addWidget(self.tabs)
         lay.addWidget(buttons)
 
+    # --- teste do som do sistema -------------------------------------------------------
+    def _test_system_audio(self) -> None:
+        import threading
+
+        from PySide6.QtCore import QTimer
+        result: dict = {}
+
+        def work():
+            try:
+                from .audiocap import probe_system_audio
+                result["peaks"] = probe_system_audio(3.0)
+            except ImportError:
+                result["error"] = tr("O componente PyAudioWPatch não está instalado nesta cópia do Shotwise.")
+            except Exception as e:  # noqa: BLE001 - qualquer falha vira mensagem para o usuário
+                result["error"] = str(e)
+
+        self.btn_aud_test.setEnabled(False)
+        self.btn_aud_test.setText(tr("Escutando… (3 s)"))
+        threading.Thread(target=work, daemon=True).start()
+
+        def poll():
+            if not result:
+                QTimer.singleShot(150, poll)
+                return
+            try:
+                self.btn_aud_test.setEnabled(True)
+                self.btn_aud_test.setText(tr("Testar som do sistema"))
+            except RuntimeError:
+                return
+            if "error" in result:
+                QMessageBox.warning(self, tr("Testar som do sistema"), result["error"])
+                return
+            peaks = result.get("peaks") or []
+            if not peaks:
+                QMessageBox.warning(self, tr("Testar som do sistema"), tr("Nenhuma saída de áudio pôde ser aberta."))
+                return
+            lines = [f"{'🔊' if pk >= 1e-3 else '·'}  {name}: {round(pk * 100)}%" for name, pk in peaks]
+            ok = any(pk >= 1e-3 for _n, pk in peaks)
+            head = tr("Som detectado. A gravação de vídeo vai incluir o áudio destas saídas:") if ok else \
+                tr("Nenhum som foi detectado. Confira se havia áudio tocando durante o teste.")
+            QMessageBox.information(self, tr("Testar som do sistema"), head + "\n\n" + "\n".join(lines))
+
+        QTimer.singleShot(150, poll)
+
     # --- aba Sobre / atualização ---------------------------------------------------------
     def _build_about(self, form: QFormLayout, cfg: Config) -> None:
         from . import APP_AUTHOR, APP_NAME, __version__
@@ -276,6 +325,13 @@ class SettingsDialog(QDialog):
         desc.setWordWrap(True)
         form.addRow(desc)
         form.addRow(QLabel(tr("Desenvolvido por {author}").format(author=APP_AUTHOR)))
+        from . import APP_URL, UPDATE_REPO_DEFAULT
+        links = QLabel(f'<a href="{APP_URL}">{APP_URL.split("//", 1)[-1]}</a> · '
+                       f'<a href="https://github.com/{UPDATE_REPO_DEFAULT}">{tr("Código-fonte")}</a> · '
+                       + tr("Software livre sob a licença GPL-3.0"))
+        links.setOpenExternalLinks(True)
+        links.setWordWrap(True)
+        form.addRow(links)
         self._about_text = self._about_info(__version__)
         info = QLabel(self._about_text)
         info.setStyleSheet("color:gray;")
@@ -516,7 +572,37 @@ SHORTCUT_ROWS = (
 )
 
 
+class HotkeyEdit(QKeySequenceEdit):
+    """Campo de atalho que também aceita Print Screen.
+
+    No Windows a tecla Print Screen não gera "tecla pressionada" para os programas (o sistema a consome), só
+    "tecla solta" — e o QKeySequenceEdit só olha a pressionada. Aqui a soltura do Print Screen vira o atalho."""
+
+    def _take_print(self, ev) -> bool:
+        if ev.key() != Qt.Key.Key_Print:
+            return False
+        from PySide6.QtCore import QKeyCombination
+        from PySide6.QtGui import QKeySequence
+        mods = ev.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+                                 | Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier)
+        self.setKeySequence(QKeySequence(QKeyCombination(mods, Qt.Key.Key_Print)))
+        self.editingFinished.emit()
+        ev.accept()
+        return True
+
+    def keyPressEvent(self, ev):
+        if not self._take_print(ev):
+            super().keyPressEvent(ev)
+
+    def keyReleaseEvent(self, ev):
+        if not self._take_print(ev):
+            super().keyReleaseEvent(ev)
+
+
 class ShortcutsDialog(QDialog):
+    # o app registra aqui como pausar os atalhos globais enquanto a janela está aberta
+    # (senão o próprio Print Screen dispararia uma captura em vez de ser digitado no campo)
+    suspend_hook = None
     """Atalhos globais de captura, separados das configurações gerais."""
 
     def __init__(self, cfg: Config, parent=None):
@@ -531,7 +617,7 @@ class ShortcutsDialog(QDialog):
         form.setHorizontalSpacing(18)
         self.edits: dict[str, QKeySequenceEdit] = {}
         for key, label in SHORTCUT_ROWS:
-            ed = QKeySequenceEdit(QKeySequence(getattr(cfg, key)))
+            ed = HotkeyEdit(QKeySequence(getattr(cfg, key)))
             ed.setMaximumSequenceLength(1)
             self.edits[key] = ed
             form.addRow(label, ed)
@@ -559,6 +645,18 @@ class ShortcutsDialog(QDialog):
         lay.addLayout(form)
         lay.addWidget(note)
         lay.addWidget(buttons)
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        if ShortcutsDialog.suspend_hook is not None and not getattr(self, "_suspended", False):
+            self._suspended = True
+            ShortcutsDialog.suspend_hook(True)
+
+    def done(self, r):
+        if getattr(self, "_suspended", False) and ShortcutsDialog.suspend_hook is not None:
+            self._suspended = False
+            ShortcutsDialog.suspend_hook(False)
+        super().done(r)
 
     def _restore(self):
         from PySide6.QtGui import QKeySequence

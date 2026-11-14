@@ -1428,7 +1428,7 @@ class GifPreviewDialog(QDialog):
             self._job = enc
             enc.progress.connect(self.bar.setValue)
             enc.failed.connect(lambda msg: self._finish(path, msg))
-            enc.done.connect(lambda _p: self._finish(path, ""))
+            enc.done.connect(lambda _p: self._finish(path, "", audio_lost=bool(self.audio) and not enc.audio_used))
             enc.start()
             return
         self._job = _EncodeJob(imgs, durs, path, self)
@@ -1437,9 +1437,10 @@ class GifPreviewDialog(QDialog):
         self._job.finished.connect(lambda: self._finish(path, ""))
         self._job.start()
 
-    def _finish(self, path: str, error: str):
+    def _finish(self, path: str, error: str, audio_lost: bool = False):
         if self._job is None:
             return
+        self._audio_lost = audio_lost
         self._job = None
         if error:
             self.info.setText(tr("Não foi possível salvar o arquivo: {err}").format(err=error))
@@ -1458,6 +1459,10 @@ class GifPreviewDialog(QDialog):
         is_mp4 = self.kind == "mp4"
         box.setWindowTitle(tr("Vídeo salvo") if is_mp4 else tr("GIF salvo"))
         box.setText((tr("O vídeo foi salvo em:") if is_mp4 else tr("O GIF foi salvo em:")) + "\n" + path)
+        if is_mp4 and getattr(self, "_audio_lost", False):
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setInformativeText(tr("O codificador de áudio do Windows falhou e o vídeo foi salvo sem som. "
+                                      "Detalhes no arquivo de log."))
         b_show = box.addButton(tr("Mostrar na pasta"), QMessageBox.ButtonRole.ActionRole)
         box.addButton(tr("Fechar"), QMessageBox.ButtonRole.RejectRole)
         box.exec()

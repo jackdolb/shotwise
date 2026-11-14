@@ -78,7 +78,7 @@ O script gera o aplicativo com o PyInstaller e o instalador `dist_installer\Shot
 - **Atualizar**: aumente `__version__` em `shotwise/__init__.py`, rode `build_installer.bat` de novo e execute o novo instalador sobre o antigo. Ele pede ao Shotwise que se encerre sozinho (e, se não obedecer, fecha o `Shotwise.exe`), troca os arquivos e preserva configurações, capturas editáveis e a escolha de iniciar com o Windows. O `AppId` do `installer\Shotwise.iss` não pode mudar.
 - **Desinstalar**: pelo Windows (Aplicativos instalados). Ele pergunta se deve apagar também `%APPDATA%\Shotwise` (configurações e capturas editáveis). Os PNGs salvos nunca são apagados.
 - **Assinatura**: defina `SHOTWIN_SIGN_THUMBPRINT` com a impressão digital de um certificado de assinatura de código e o script assina o `.exe` e o instalador com o `signtool`. Sem assinatura, o Controle de Aplicativo Inteligente e o SmartScreen podem bloquear.
-- Instalação silenciosa (para scripts): `Shotwise-Setup-1.2.2.exe /VERYSILENT /SUPPRESSMSGBOXES`.
+- Instalação silenciosa (para scripts): `Shotwise-Setup-1.2.3.exe /VERYSILENT /SUPPRESSMSGBOXES`.
 - Se precisar de `.msi` (Intune/GPO), dá para gerar com o WiX a partir da mesma pasta `dist\Shotwise`.
 
 **Gerar um executável único (`dist\Shotwise.exe`)**
@@ -256,4 +256,16 @@ Sem `/UPDATEFOLDER`, uma instalação silenciosa (inclusive a feita pelo própri
 
 **Vídeo MP4**: `Alt+Shift+V` (ou o menu da bandeja) grava a área escolhida, com a mesma barra, a mesma janela de revisão e os mesmos recursos do GIF (segmentos, dividir, excluir, girar, zoom, destaque e recorte). Para tirar trechos do meio, divida nas duas pontas e exclua o segmento do meio; repita quantas vezes quiser (cada passo tem Desfazer), e o que sobrar é emendado no vídeo final. **Abrir vídeo ou GIF já salvo**: o Shotwise aparece em "Abrir com" e no menu "Editar no Shotwise" dos arquivos `.mp4` e `.gif` (o instalador registra isso), e também abre por *Abrir*. O arquivo é lido no player para dividir, excluir, girar, zoom etc. e salvo como um arquivo novo (o original não é alterado). O MP4 volta com o áudio; para caber na memória o vídeo é reduzido à largura máxima e aos quadros por segundo das configurações de vídeo. Leitura de até 15 minutos.
 
-O arquivo vai para a pasta de capturas, com o nome definido em *Configurações > Captura > Nome dos arquivos*, e também é copiado para colar em e-mail ou chat. Não precisa de ffmpeg nem de outro programa: usa o codificador do Qt Multimedia, com H.264 quando o Windows oferece e MPEG-4 como alternativa automática. **Áudio**: o vídeo grava o som do sistema (o que toca nas caixas de som) e o microfone, misturados numa faixa AAC. O som do sistema usa o componente opcional PyAudioWPatch (`requirements-audio.txt`, só Windows); sem ele o app avisa e grava só o microfone. Dividir, excluir e cortar trechos acompanham o áudio. O GIF não tem som, e a revisão antes de salvar toca sem som. Em *Configurações > Vídeo e GIF* ficam as caixas de som do sistema e microfone (com escolha do dispositivo), a fluidez, a duração, a largura e a memória máxima (os quadros ficam na memória até salvar; largura menor e menos quadros por segundo rendem gravações mais longas).
+O arquivo vai para a pasta de capturas, com o nome definido em *Configurações > Captura > Nome dos arquivos*, e também é copiado para colar em e-mail ou chat. Não precisa de ffmpeg nem de outro programa: usa o codificador do Qt Multimedia, com H.264 quando o Windows oferece e MPEG-4 como alternativa automática. **Áudio**: o vídeo grava o som do sistema (o que toca nas caixas de som) e o microfone, misturados numa faixa AAC. O som do sistema usa o componente opcional PyAudioWPatch (`requirements-audio.txt`, só Windows); sem ele o app avisa e grava só o microfone. São gravadas todas as saídas de áudio ao mesmo tempo (alto-falantes, fone de ouvido, headset do Teams), então o som entra mesmo quando não toca na saída padrão; se tudo vier em silêncio, o app avisa. O botão *Configurações > Vídeo e GIF > Testar som do sistema* escuta por 3 segundos e mostra quais saídas estão recebendo som. Dividir, excluir e cortar trechos acompanham o áudio. O GIF não tem som, e a revisão antes de salvar toca sem som. Em *Configurações > Vídeo e GIF* ficam as caixas de som do sistema e microfone (com escolha do dispositivo), a fluidez, a duração, a largura e a memória máxima (os quadros ficam na memória até salvar; largura menor e menos quadros por segundo rendem gravações mais longas).
+
+## Licença
+
+Shotwise — Copyright (C) 2026 Jackson Araujo (https://jacksonti.com)
+
+Este programa é software livre: você pode redistribuí-lo e/ou modificá-lo sob os termos da GNU General Public
+License, publicada pela Free Software Foundation, na versão 3 da Licença ou (a seu critério) qualquer versão posterior
+(GPL-3.0-or-later). Ele é distribuído na esperança de ser útil, mas SEM NENHUMA GARANTIA. O texto completo está no
+arquivo [LICENSE](LICENSE).
+
+Componentes de terceiros mantêm suas próprias licenças: PySide6/Qt (LGPL-3.0), NumPy (BSD), Pillow (MIT-CMU/HPND),
+PyAudioWPatch (MIT) e os pacotes winrt (MIT).
